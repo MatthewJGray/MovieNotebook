@@ -192,3 +192,105 @@ fig.update_layout(width=900, height=600)
 # Display the plot
 fig.show()
 
+
+# COMMAND ----------
+
+from pyspark.sql.functions import col, date_format
+scifi = scifi.withColumn("year", col("year").cast(DateType()))
+
+
+# COMMAND ----------
+
+scifi = scifi.withColumn("rating", col("rating").cast(IntegerType()))
+
+# COMMAND ----------
+
+adventure.write.mode("overwrite").option("header",'true').csv("/mnt/project-movies-data/transformed-data/adventure")
+horror.write.mode("overwrite").option("header",'true').csv("/mnt/project-movies-data/transformed-data/horror")
+thriller.write.mode("overwrite").option("header",'true').csv("/mnt/project-movies-data/transformed-data/thriller")
+
+
+# COMMAND ----------
+
+# Read the CSV files as Spark DataFrames
+action = spark.read.format("csv") \
+    .option("header", "true") \
+    .option("inferSchema", "true") \
+    .load("/mnt/project-movies-data/raw-data/action.csv")
+
+scifi = spark.read.format("csv") \
+    .option("header", "true") \
+    .option("inferSchema", "true") \
+    .load("/mnt/project-movies-data/raw-data/scifi.csv")
+
+adventure = spark.read.format("csv") \
+    .option("header", "true") \
+    .option("inferSchema", "true") \
+    .load("/mnt/project-movies-data/raw-data/adventure.csv")
+
+horror = spark.read.format("csv") \
+    .option("header", "true") \
+    .option("inferSchema", "true") \
+    .load("/mnt/project-movies-data/raw-data/horror.csv")
+
+thriller = spark.read.format("csv") \
+    .option("header", "true") \
+    .option("inferSchema", "true") \
+    .load("/mnt/project-movies-data/raw-data/thriller.csv")
+
+# Create temporary views for querying
+action.createOrReplaceTempView("action_view")
+scifi.createOrReplaceTempView("scifi_view")
+adventure.createOrReplaceTempView("adventure_view")
+horror.createOrReplaceTempView("horror_view")
+thriller.createOrReplaceTempView("thriller_view")
+
+# Combine movie counts by year
+query_result = spark.sql("""
+SELECT year,
+       SUM(CASE WHEN genre = 'action' THEN 1 ELSE 0 END) AS action_count,
+       SUM(CASE WHEN genre = 'scifi' THEN 1 ELSE 0 END) AS scifi_count,
+       SUM(CASE WHEN genre = 'horror' THEN 1 ELSE 0 END) AS horror_count,
+       SUM(CASE WHEN genre = 'thriller' THEN 1 ELSE 0 END) AS thriller_count,
+       SUM(CASE WHEN genre = 'adventure' THEN 1 ELSE 0 END) AS adventure_count
+FROM (
+  SELECT year, movie_name, rating, 'action' AS genre
+  FROM action_view
+  UNION ALL
+  SELECT year, movie_name, rating, 'scifi' AS genre
+  FROM scifi_view
+   UNION ALL
+  SELECT year, movie_name, rating, 'adventure' AS genre
+  FROM adventure_view
+   UNION ALL
+  SELECT year, movie_name, rating, 'horror' AS genre
+  FROM horror_view
+   UNION ALL
+  SELECT year, movie_name, rating, 'thriller' AS genre
+  FROM thriller_view
+) combined
+GROUP BY year
+ORDER BY year ASC
+""")
+
+# Import Plotly Express for visualisation
+import plotly.express as px
+
+# Create a Pandas DataFrame for plotting
+pandas_df = query_result.toPandas()
+
+# Create the bar chart using Plotly
+fig = px.bar(pandas_df, x="year", y=["action_count", "scifi_count", "horror_count", "adventure_count", "thriller_count"], barmode="group", color_continuous_scale="Turbo")
+             
+# Set y-axis range to 0-200
+fig.update_layout(yaxis_range=[0, 165]) 
+
+# Change `barmode` from "stack" to "group"
+fig.update_layout(barmode="group")
+
+# Set plot size and other formatting options
+fig.update_layout(width=1200, height=800, legend_title="Genre", legend_title_font_size=12)
+
+# Display the plot
+fig.show()
+
